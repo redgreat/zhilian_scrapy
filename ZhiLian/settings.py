@@ -57,7 +57,7 @@ DEFAULT_REQUEST_HEADERS = {
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-   'ZhiLian.pipelines.ZhilianPipeline': 300,
+   # 'ZhiLian.pipelines.ZhilianPipeline': 300,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

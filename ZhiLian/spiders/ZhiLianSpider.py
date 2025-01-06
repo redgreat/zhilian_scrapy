@@ -10,54 +10,57 @@ class ZhilianspiderSpider(scrapy.Spider):
     name = 'ZhiLianSpider'
     allowed_domains = ['zhaopin.com']
     max_pages = 10
-    positions = ['人力资源', '人事', '行政', '招聘', '薪酬绩效', 'HRBP', '财务', '会计', '测试', '开发', '前端', '后端',
-                 '系统运维', '数据管理', 'UI', '项目管理', '产品', '产品架构师', '市场分析师', '项目经理', '算法架构师',
-                 '算法工程师', '方案专家', '硬件工程师', '运营', '运维', '商务', '通路行销', '招投标', '法务',
-                 '电催/催收', '外访/催收外访', '设计师', '策划师', '大客户经理', '销售', '供应链', '仓库管理专员',
-                 '客服', '车务专员', 'DBA']
-    citys = [538,  # 上海
-             530,  # 北京
-             763,  # 广州
-             765,  # 深圳
-             531,  # 天津
-             736,  # 武汉
-             854,  # 西安
-             801,  # 成都
-             635,  # 南京
-             653,  # 杭州
-             551,  # 重庆
-             682,  # 厦门
-             600,  # 大连
-             631,  # 长春
-             599,  # 沈阳
-             702,  # 济南
-             703,  # 青岛
-             639,  # 苏州
-             636,  # 无锡
-             654,  # 宁波
-             719,  # 郑州
-             749,  # 长沙
-             681,  # 福州
-             664,  # 合肥
-             622,  # 哈尔滨
-             ]
-
-    # 拼接初始化Url
-    start_urls = ["https://www.zhaopin.com/"]
-
-    # start_urls = ["https://www.zhaopin.com/sou/jl={citycode}/kw={position}/p=1"]
+    positions = ['人力资源', '人事', '行政', '招聘', '薪酬绩效', 'HRBP', '财务', '会计', '测试', '开发', '前端',
+                  '后端',
+                  '系统运维', '数据管理', 'UI', '项目管理', '产品', '产品架构师', '市场分析师', '项目经理',
+                  '算法架构师',
+                  '算法工程师', '方案专家', '硬件工程师', '运营', '运维', '商务', '通路行销', '招投标', '法务',
+                  '电催/催收', '外访/催收外访', '设计师', '策划师', '大客户经理', '销售', '供应链', '仓库管理专员',
+                  '客服', '车务专员', 'DBA']
 
     def start_requests(self):
         for position in self.positions:
-            for city in self.citys:
-                url = f"https://www.zhaopin.com/sou/jl={city}/kw={position}/p=1"
-                yield scrapy.Request(url=url, callback=self.parse, meta={'position': position, 'city': city, 'page': 1})
+            url = f"https://www.zhaopin.com/sou/jl=?p=1&kw={position}"
+            yield scrapy.Request(url=url, callback=self.parse, meta={'position': position, 'page': 1})
+
+    def parse_detail(self, response):
+        # 提取技能要求
+        skill = response.xpath('//div[@class="describtion__detail-content"]//text()').getall()
+        skill = '\n'.join([s.strip() for s in skill if s.strip()])
+
+        # 获取传递过来的职位信息
+        location = response.meta['location']
+        company_name = response.meta['company_name']
+        company_type = response.meta['company_type']
+        education = response.meta['education']
+        experience = response.meta['experience']
+        salary = response.meta['salary']
+        job_name = response.meta['job_name']
+        filename = response.meta['filename']
+
+        # 将数据写入 CSV 文件
+        with open(filename, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [location, company_name, company_type, education, experience, salary, skill, job_name])
+
+        # 创建Item对象并传递数据
+        item = ZhilianItem(
+            location=location,
+            company_name=company_name,
+            company_type=company_type,
+            education=education,
+            experience=experience,
+            salary=salary,
+            skill=skill,
+            job_name=job_name
+        )
+        yield item
 
     def parse(self, response):
         position = response.meta['position']
-        city = response.meta['city']
         current_page = response.meta['page']
-        filename = f"./files/ZHILIAN_{position}_全国.csv"
+        filename = f"../files/ZHILIAN_{position}_全国.csv"
 
         # 创建文件并写入表头
         if current_page == 1:
@@ -65,75 +68,67 @@ class ZhilianspiderSpider(scrapy.Spider):
                 writer = csv.writer(f)
                 writer.writerow(['位置', '公司名', '公司行业', '学历要求', '经验要求', '薪资', '技能要求', '职位'])
 
-        li_list = response.xpath('//li[@class="job-card-wrapper"]')
-        print(f"Number of items found on page {current_page}: {len(li_list)}")
+        div_list = response.xpath('//div[@class="joblist-box__item clearfix joblist-box__item-unlogin"]')
+        print(f"Number of items found on page {current_page}: {len(div_list)}")
 
-        if not li_list:
-            print(f"No more data found for position '{position}' in city '{city}'.")
+        if not div_list:
+            print(f"No more data found for position '{position}'.")
             return  # 如果没有数据，则停止请求
 
-        for li in li_list:
-            poname = li.xpath('//div[@class="joblist-box__item clearfix"]'
-                              '//div[@class="jobinfo__top"]/p/text()').extract_first() or ''
-            providesalary = li.xpath('//div[@class="jobinfo"]'
-                                     '//div[@class="jobinfo__top"]/p/text()').extract_first() or ''
-            city = li.xpath('//div[@class="jobinfo__other-info"]/div[1]/text()').extract_first() or ''
-            worktime = li.xpath('//div[@class="jobinfo__other-info"]/div[2]/text()').extract_first() or ''
-            coattr = li.xpath('//div[@class="jobinfo__other-info"]/div[3]/text()').extract_first() or ''
-            cosize = li.xpath('//div[@class="jobinfo__other-info"]/div[4]/text()').extract_first() or ''
-            title = li.xpath(".//span[@class='job-name']/text()").extract_first() or ''
-            salary = li.xpath(".//span[@class='salary']/text()").extract_first() or ''
-            area = li.xpath(".//span[@class='job-area']/text()").extract_first() or ''
+        for div in div_list:
+            job_name = div.xpath(
+                './/div[@class="jobinfo__top"]/a[contains(@class, "jobinfo__name")]/text()').extract_first() or ''
+            salary = div.xpath('.//p[@class="jobinfo__salary"]/text()').extract_first() or ''
+            location = div.xpath('.//div[@class="jobinfo__other-info-item"]/span/text()').extract_first() or ''
+            experience = div.xpath('.//div[@class="jobinfo__other-info-item"][2]/text()').extract_first() or ''
+            education = div.xpath('.//div[@class="jobinfo__other-info-item"][3]/text()').extract_first() or ''
+            company_name = div.xpath('.//a[@class="companyinfo__name companyinfo__name-short"]/text()').extract_first()
+            if not company_name:
+                company_name = div.xpath('.//a[@class="companyinfo__name"]/text()').extract_first() or ''
+            company_type = div.xpath(
+                './/div[@class="companyinfo__tag"]/div[@class="joblist-box__item-tag"][3]/text()').extract_first()
+            if not company_type:
+                company_type = div.xpath(
+                    './/div[@class="companyinfo__tag"]/div[@class="joblist-box__item-tag"][2]/text()').extract_first() or ''
 
-            # 确保提取job_lable_list的正确性
-            job_lable_list = li.xpath(".//ul[@class='tag-list']//text()").extract()
-            if len(job_lable_list) >= 2:
-                experience = job_lable_list[0] or ''
-                education = job_lable_list[1] or ''
-            else:
-                experience = ''
-                education = ''
+            if job_name:
+                job_name = job_name.strip()
+            if salary:
+                salary = salary.strip()
+            if location:
+                location = location.strip()
+            if experience:
+                experience = experience.strip()
+            if education:
+                education = education.strip()
+            if company_name:
+                company_name = company_name.strip()
+            if company_type:
+                company_type = company_type.strip()
 
-            company = li.xpath(".//h3[@class='company-name']/a/text()").extract_first() or ''
+            detail_url = div.xpath(
+                './/div[@class="jobinfo__top"]/a/@href').extract_first() or ''
 
-            # 确保提取company_message的正确性
-            company_message = li.xpath(".//ul[@class='company-tag-list']//text()").extract()
-            company_type = company_message[0] if company_message else ''
-
-            # 提取boon字段
-            boon = li.xpath('.//div[@class="job_card_footer"]//div[@class="info-desc"]/text()').extract()
-            boon = boon[0] if boon else None
-            # 技能
-            skill_list = li.xpath(
-                ".//div[@class='job-card-footer clearfix']//ul[@class='tag-list']/li/text()"
-            ).extract() or []
-            skill = "|".join(skill_list)
-
-            # 将数据写入 CSV 文件
-            with open(filename, 'a', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow([title, area, salary, experience, education, company, company_type, skill])
-
-            # 创建BossItem对象并传递数据
-            book = ZhilianItem(
-                poname=poname,
-                coname=area,
-                city=salary,
-                providesalary=experience,
-                degree=education,
-                coattr=company,
-                cosize=company_type,
-                worktime=skill,
-                welfare=skill
+            yield scrapy.Request(
+                url=detail_url,
+                callback=self.parse_detail,
+                meta={
+                    'location': location,
+                    'company_name': company_name,
+                    'company_type': company_type,
+                    'education': education,
+                    'experience': experience,
+                    'salary': salary,
+                    'job_name': job_name,
+                    'filename': filename
+                }
             )
-            yield book
 
-        # 处理下一页
         if current_page < self.max_pages:  # 检查是否超过最大页码
             next_page = current_page + 1
             next_url = response.urljoin(
-                f"https://www.zhaopin.com/sou/jl={city}/kw={position}/p={next_page}"
+                f"https://www.zhaopin.com/sou/jl=?p={next_page}&kw={position}"
             )
             yield scrapy.Request(
-                url=next_url, callback=self.parse, meta={'position': position, 'city': city, 'page': next_page}
+                url=next_url, callback=self.parse, meta={'position': position, 'page': next_page}
             )
